@@ -15,13 +15,11 @@ class Mistral_Embedding:
         self,
         model: str = "mistral-embed",
         encoding_format: str = "float",
-        embedding_dim: int = 1024,  # Mistral's default dimension
         api_key: Optional[str] = None,
         index_directory: str = "faiss_indexes"
     ):
         self.model = model
         self.encoding_format = encoding_format
-        self.embedding_dim = embedding_dim
         self.api_key = api_key or os.getenv('MISTRAL_API_KEY')
         self.index_directory = index_directory
         
@@ -76,8 +74,14 @@ class Mistral_Embedding:
         # Get embeddings
         embeddings = self.get_embedding(texts)
         
-        # Create FAISS index
-        index = faiss.IndexFlatL2(self.embedding_dim)
+        # Ensure embeddings are in the correct shape and type
+        embeddings = np.array(embeddings, dtype=np.float32)
+        
+        # Get actual dimension from embeddings
+        actual_dim = embeddings.shape[1]
+        
+        # Create FAISS index with the actual dimension
+        index = faiss.IndexFlatL2(actual_dim)
         index.add(embeddings)
         
         # Create chunks metadata
@@ -86,6 +90,7 @@ class Mistral_Embedding:
             "model": self.model,
             "encoding_format": self.encoding_format,
             "total_chunks": len(texts),
+            "embedding_dim": actual_dim,
             "chunks": [
                 {
                     "id": i,
@@ -170,8 +175,11 @@ class Mistral_Embedding:
         # Update embeddings array
         embeddings = np.vstack([embeddings, new_embeddings])
         
+        # Get dimension from embeddings
+        actual_dim = embeddings.shape[1]
+        
         # Update FAISS index
-        index = faiss.IndexFlatL2(self.embedding_dim)
+        index = faiss.IndexFlatL2(actual_dim)
         index.add(embeddings)
         
         # Update chunks metadata
@@ -187,6 +195,7 @@ class Mistral_Embedding:
         chunks_metadata["chunks"].extend(new_chunks)
         chunks_metadata["total_chunks"] = len(chunks_metadata["chunks"])
         chunks_metadata["updated_at"] = datetime.now().isoformat()
+        chunks_metadata["embedding_dim"] = actual_dim
         
         # Save updated index and metadata
         self.save_index(name, index, chunks_metadata, embeddings)
