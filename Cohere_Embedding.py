@@ -16,19 +16,17 @@ class Cohere_Embedding:
         model: str = "embed-english-v3.0",
         input_type: str = "classification",
         embedding_types: List[str] = ["float"],
-        embedding_dim: int = 1024,  # Cohere's default dimension
         api_key: Optional[str] = None,
         index_directory: str = "faiss_indexes"
     ):
         self.model = model
         self.input_type = input_type
         self.embedding_types = embedding_types
-        self.embedding_dim = embedding_dim
-        self.api_key = api_key or os.getenv('CO_API_KEY')
+        self.api_key = api_key or os.getenv('COHERE_API_KEY')
         self.index_directory = index_directory
         
         if not self.api_key:
-            raise ValueError("CO_API_KEY not found in environment variables")
+            raise ValueError("COHERE_API_KEY not found in environment variables")
         
         # Create necessary directories
         os.makedirs(self.index_directory, exist_ok=True)
@@ -81,8 +79,14 @@ class Cohere_Embedding:
         # Get embeddings
         embeddings = self.get_embedding(texts)
         
-        # Create FAISS index
-        index = faiss.IndexFlatL2(self.embedding_dim)
+        # Ensure embeddings are in the correct shape and type
+        embeddings = np.array(embeddings, dtype=np.float32)
+        
+        # Get actual dimension from embeddings
+        actual_dim = embeddings.shape[1]
+        
+        # Create FAISS index with the actual dimension
+        index = faiss.IndexFlatL2(actual_dim)
         index.add(embeddings)
         
         # Create chunks metadata
@@ -90,7 +94,9 @@ class Cohere_Embedding:
             "created_at": datetime.now().isoformat(),
             "model": self.model,
             "input_type": self.input_type,
+            "embedding_types": self.embedding_types,
             "total_chunks": len(texts),
+            "embedding_dim": actual_dim,
             "chunks": [
                 {
                     "id": i,
@@ -175,8 +181,11 @@ class Cohere_Embedding:
         # Update embeddings array
         embeddings = np.vstack([embeddings, new_embeddings])
         
+        # Get dimension from embeddings
+        actual_dim = embeddings.shape[1]
+        
         # Update FAISS index
-        index = faiss.IndexFlatL2(self.embedding_dim)
+        index = faiss.IndexFlatL2(actual_dim)
         index.add(embeddings)
         
         # Update chunks metadata
@@ -192,6 +201,7 @@ class Cohere_Embedding:
         chunks_metadata["chunks"].extend(new_chunks)
         chunks_metadata["total_chunks"] = len(chunks_metadata["chunks"])
         chunks_metadata["updated_at"] = datetime.now().isoformat()
+        chunks_metadata["embedding_dim"] = actual_dim
         
         # Save updated index and metadata
         self.save_index(name, index, chunks_metadata, embeddings)
