@@ -59,7 +59,8 @@ class OpenAI_LLM:
         return requests.post(url, headers=headers, json=payload, stream=self.stream)
 
 class OpenAI_Chatbot:
-    _chatbot_counter = 0  # Class variable to track number of chatbot instances
+    _chatbot_counter = 0
+    provider = "openai"
 
     def __init__(
         self,
@@ -81,21 +82,40 @@ class OpenAI_Chatbot:
     def _create_conversation_folder(self) -> str:
         """Create and return the path to this chatbot's conversation folder"""
         base_folder = "conversations"
-        chatbot_folder = f"{base_folder}/{self.name}"
+        provider_folder = f"{base_folder}/{self.provider}"
+        chatbot_folder = f"{provider_folder}/{self.name}"
+        
+        # Create necessary folders
+        os.makedirs(provider_folder, exist_ok=True)
         os.makedirs(chatbot_folder, exist_ok=True)
         
+        # Create or update provider metadata
+        provider_metadata = {
+            "provider": self.provider,
+            "total_chatbots": self._chatbot_counter,
+            "last_updated": datetime.now().isoformat()
+        }
+        
+        with open(f"{provider_folder}/provider_metadata.json", 'w') as f:
+            json.dump(provider_metadata, f, indent=2)
+        
         # Create or update chatbot metadata
-        metadata = {
+        chatbot_metadata = {
+            "provider": self.provider,
             "chatbot_id": self.chatbot_id,
             "name": self.name,
             "created_at": datetime.now().isoformat(),
             "system_prompt": self.system_prompt,
             "model": self.llm.model,
-            "temperature": self.llm.temperature
+            "temperature": self.llm.temperature,
+            "max_tokens": self.llm.max_tokens,
+            "top_p": self.llm.top_p,
+            "frequency_penalty": self.llm.frequency_penalty,
+            "presence_penalty": self.llm.presence_penalty
         }
         
         with open(f"{chatbot_folder}/metadata.json", 'w') as f:
-            json.dump(metadata, f, indent=2)
+            json.dump(chatbot_metadata, f, indent=2)
             
         return chatbot_folder
 
@@ -113,11 +133,13 @@ class OpenAI_Chatbot:
         filename = f"{self.conversation_folder}/conversation_{self.conversation_id}.json"
         
         conversation_data = {
+            "provider": self.provider,
             "conversation_id": self.conversation_id,
             "chatbot_name": self.name,
             "chatbot_id": self.chatbot_id,
             "timestamp": datetime.now().isoformat(),
             "system_prompt": self.system_prompt,
+            "model": self.llm.model,
             "history": self.history
         }
         
